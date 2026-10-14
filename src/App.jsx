@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { gameConfig as config } from "./game-config.js";
-import targetConfig from "./targets.json";
 import Viewer from "./Viewer.jsx";
 import Icon from "./Icon.jsx";
 import {
@@ -136,8 +135,9 @@ function Rules() {
         <p>
           <b>01</b>
           <span>
-            <strong>Find Nick in every scene.</strong> Click or tap when you
-            spot him. Drag to look around; scroll or pinch to zoom.
+            <strong>Find Nick in the crowd.</strong> There may be more than
+            one. We won’t tell you how many. Keep searching or move to the next
+            scene whenever you’re ready, even if you haven’t found anyone yet.
           </span>
         </p>
         <p>
@@ -145,8 +145,10 @@ function Rules() {
           <span>
             <strong>Make your guesses count.</strong> Each find earns{" "}
             {config.pointsPerFind} points. Wrong guesses cost{" "}
-            {config.wrongGuessPenalty}; a hint costs {config.hintPenalty}. A
-            round never drops below zero.
+            {config.wrongGuessPenalty}; finding Wally costs{" "}
+            {config.wallyPenalty}. Your total never goes below zero. Clicking an
+            already marked character doesn’t count again. Find every Nick with
+            no mistakes for a Perfect! bonus of {config.perfectBonus} points.
           </span>
         </p>
         <p>
@@ -161,10 +163,10 @@ function Rules() {
         Keyboard explorer? Tab to the scene, zoom with + / −, move with the
         arrows, and press Enter to guess at the center. Press 0 to reset.
       </p>
-      {config.practiceMode && (
-        <p className="practice-note">
-          <Icon name="flag" size={16} /> Practice edition: click the orange N
-          markers. Nick’s real hiding places are coming soon.
+      {config.reviewMode && (
+        <p className="review-note">
+          <Icon name="flag" size={16} /> Location review: magenta marks Nick;
+          cyan marks Wally.
         </p>
       )}
     </>
@@ -177,7 +179,7 @@ function Home({ onStart, onRules }) {
       <main className="home-main">
         <div className="hero-copy">
           <div className="edition">
-            <span /> THE FAREWELL EDITION <span className="edition-line" />
+            <span /> THE NEXT CHAPTER <span className="edition-line" />
           </div>
           <h1>
             Where
@@ -198,7 +200,7 @@ function Home({ onStart, onRules }) {
           <p className="hero-description">
             Five crowded worlds. One familiar face.
             <br />
-            Give Nick a send-off worth searching for.
+            Join Nick on his next adventure.
           </p>
           <button className="btn primary start-button" onClick={onStart}>
             Let’s find Nick <Icon name="arrow" size={24} />
@@ -262,10 +264,10 @@ function Home({ onStart, onRules }) {
         <div className="strip-heading">
           <div>
             <span className="eyebrow">THE ITINERARY</span>
-            <h2>A few stops before he goes.</h2>
+            <h2>A few stops along the way.</h2>
           </div>
           <span className="strip-note">
-            ONE NICK IN EVERY SCENE <Icon name="flag" size={17} />
+            LOOK CLOSELY. THEN LOOK AGAIN. <Icon name="flag" size={17} />
           </span>
         </div>
         <div className="scene-previews">
@@ -290,12 +292,36 @@ function Home({ onStart, onRules }) {
 }
 
 function TargetEditor({ onExit }) {
-  const [index, setIndex] = useState(0),
-    [targets, setTargets] = useState(targetConfig.targets),
-    [draw, setDraw] = useState(true);
+  const [index, setIndex] = useState(0);
+  const [targets, setTargets] = useState(() =>
+    Object.fromEntries(config.rounds.map((round) => [round.id, round.targets])),
+  );
+  const [draw, setDraw] = useState(true);
+  const [selected, setSelected] = useState(0);
   const round = {
     ...config.rounds[index],
-    target: targets[config.rounds[index].id],
+    targets: targets[config.rounds[index].id],
+  };
+  const updateTarget = (target) => {
+    const at = selected ?? round.targets.length;
+    setTargets((previous) => ({
+      ...previous,
+      [round.id]:
+        selected === null
+          ? [...previous[round.id], target]
+          : previous[round.id].map((rectangle, i) =>
+              i === selected ? target : rectangle,
+            ),
+    }));
+    setSelected(at);
+  };
+  const removeTarget = () => {
+    if (selected === null || round.targets.length <= 1) return;
+    setTargets((previous) => ({
+      ...previous,
+      [round.id]: previous[round.id].filter((_, i) => i !== selected),
+    }));
+    setSelected(0);
   };
   return (
     <main className="setup-main">
@@ -303,7 +329,10 @@ function TargetEditor({ onExit }) {
         <div>
           <span className="eyebrow">HOST’S DESK</span>
           <h1>Set Nick’s hiding places.</h1>
-          <p>Choose a scene, zoom in, then draw a rectangle around Nick.</p>
+          <p>
+            Add a rectangle for every Nick. Players won’t see how many are
+            hidden.
+          </p>
         </div>
         <button className="btn secondary compact" onClick={onExit}>
           Back to game <Icon name="arrow" />
@@ -314,7 +343,10 @@ function TargetEditor({ onExit }) {
           Scene{" "}
           <select
             value={index}
-            onChange={(e) => setIndex(Number(e.target.value))}
+            onChange={(e) => {
+              setIndex(Number(e.target.value));
+              setSelected(0);
+            }}
           >
             {config.rounds.map((r, i) => (
               <option key={r.id} value={i}>
@@ -332,13 +364,41 @@ function TargetEditor({ onExit }) {
         </button>
         <button
           className="btn secondary compact"
+          onClick={() => {
+            setSelected(null);
+            setDraw(true);
+          }}
+        >
+          Add Nick <Icon name="plus" />
+        </button>
+        <button
+          className="btn secondary compact"
+          disabled={selected === null || round.targets.length <= 1}
+          onClick={removeTarget}
+        >
+          Remove selected <Icon name="close" />
+        </button>
+        <button
+          className="btn secondary compact"
           onClick={() =>
             downloadFile(
               "targets.json",
               new Blob(
                 [
-                  JSON.stringify({ practiceMode: false, targets }, null, 2) +
-                    "\n",
+                  JSON.stringify(
+                    {
+                      reviewMode: false,
+                      targets,
+                      wally: Object.fromEntries(
+                        config.rounds.map((round) => [
+                          round.id,
+                          round.wallyTargets,
+                        ]),
+                      ),
+                    },
+                    null,
+                    2,
+                  ) + "\n",
                 ],
                 { type: "application/json" },
               ),
@@ -348,21 +408,40 @@ function TargetEditor({ onExit }) {
           Download targets <Icon name="download" />
         </button>
       </div>
+      <div className="target-picker" aria-label="Host target selection">
+        {round.targets.map((_, i) => (
+          <button
+            key={i}
+            className={selected === i ? "selected" : ""}
+            aria-pressed={selected === i}
+            onClick={() => setSelected(i)}
+          >
+            Nick {i + 1}
+          </button>
+        ))}
+        {selected === null && (
+          <span>Draw a rectangle to add another Nick.</span>
+        )}
+      </div>
       <Viewer
         key={round.id}
         round={round}
         editing
         drawMode={draw}
-        onTarget={(target) =>
-          setTargets((previous) => ({ ...previous, [round.id]: target }))
-        }
+        selectedTarget={selected}
+        onTarget={updateTarget}
       />
       <div className="setup-result">
-        <code>{JSON.stringify(round.target)}</code>
+        <code>
+          {selected === null
+            ? "Draw a new hiding place."
+            : JSON.stringify(round.targets[selected])}
+        </code>
         <p>
-          Download after setting all five scenes. Replace{" "}
-          <code>src/targets.json</code> with the downloaded file, then rebuild.
-          The orange practice markers will disappear.
+          Choose a Nick to redraw or remove its rectangle. Add every hiding
+          place, then download and replace <code>src/targets.json</code>. The
+          exported file hides the review overlays and preserves Wally’s
+          location.
         </p>
       </div>
     </main>
@@ -378,9 +457,9 @@ export default function App() {
     [nameError, setNameError] = useState("");
   const [index, setIndex] = useState(0),
     [ready, setReady] = useState(false),
-    [found, setFound] = useState(false);
+    [foundTargets, setFoundTargets] = useState([]);
   const [misses, setMisses] = useState(0),
-    [hinted, setHinted] = useState(false),
+    [wallyHits, setWallyHits] = useState([]),
     [history, setHistory] = useState([]);
   const [paused, setPaused] = useState(false),
     [hidden, setHidden] = useState(document.hidden),
@@ -393,17 +472,46 @@ export default function App() {
   const [roundStart, setRoundStart] = useState(0),
     [totalTime, setTotalTime] = useState(0);
   const audio = useRef(null);
-  const clock = useClock(
-    stage === "play" &&
-      ready &&
-      !found &&
-      !paused &&
-      !hidden &&
-      !rules &&
-      !restart,
-  );
-  const score = history.reduce((total, round) => total + round.points, 0);
+  const foundRef = useRef([]);
+  const wallyRef = useRef([]);
   const round = config.rounds[index];
+  const clock = useClock(
+    stage === "play" && ready && !paused && !hidden && !rules && !restart,
+  );
+  const currentRoundPoints = roundPoints(
+    foundTargets.length,
+    misses,
+    wallyHits.length,
+    config,
+  );
+  const baseScore = Math.max(
+    0,
+    history.reduce((total, round) => total + round.points, 0) +
+      (stage === "play" ? currentRoundPoints : 0),
+  );
+  const totalFound = history.reduce(
+    (total, round) => total + round.foundCount,
+    0,
+  );
+  const perfect =
+    stage === "result" &&
+    history.length === config.rounds.length &&
+    history.every(
+      (entry, i) =>
+        entry.id === config.rounds[i].id &&
+        entry.foundCount === config.rounds[i].targets.length &&
+        entry.misses === 0 &&
+        entry.wallyCount === 0,
+    );
+  const perfectBonus = perfect ? config.perfectBonus : 0;
+  const score = baseScore + perfectBonus;
+  const totalWally = history.reduce(
+    (total, entry) => total + entry.wallyCount,
+    0,
+  );
+  const scoreRatio = totalFound
+    ? baseScore / (totalFound * config.pointsPerFind)
+    : 0;
   const onReady = useCallback((value) => setReady(value), []);
   useEffect(() => {
     if (stage !== "name") window.scrollTo({ top: 0, behavior: "instant" });
@@ -435,8 +543,8 @@ export default function App() {
       const notes =
         type === "found"
           ? [523, 659, 784, 1047]
-          : type === "hint"
-            ? [440, 554]
+          : type === "wally"
+            ? [220, 164, 110]
             : [170, 130];
       notes.forEach((freq, i) => {
         const oscillator = ctx.createOscillator(),
@@ -468,33 +576,41 @@ export default function App() {
     setNameError("");
     clock.reset();
     setIndex(0);
-    setFound(false);
+    foundRef.current = [];
+    setFoundTargets([]);
     setReady(false);
     setMisses(0);
-    setHinted(false);
+    wallyRef.current = [];
+    setWallyHits([]);
     setHistory([]);
     setRoundStart(0);
     setPaused(false);
     setStage("play");
   };
-  const guess = (correct) => {
-    if (found || paused || hidden || rules || restart) return;
-    if (correct) {
-      const now = clock.read();
-      setFound(true);
+  const guess = (targetIndex, kind = "nick") => {
+    if (paused || hidden || rules || restart) return;
+    if (kind === "wally") {
+      if (wallyRef.current.includes(targetIndex)) {
+        setToast("Wally’s already been spotted. Keep looking for Nick!");
+        return;
+      }
+      const hits = [...wallyRef.current, targetIndex];
+      wallyRef.current = hits;
+      setWallyHits(hits);
+      playSound("wally");
+      setToast(`That’s Wally! −${config.wallyPenalty} points.`);
+      return;
+    }
+    if (targetIndex >= 0) {
+      if (foundRef.current.includes(targetIndex)) {
+        setToast("You’ve already found this Nick. Keep looking!");
+        return;
+      }
+      const nextFound = [...foundRef.current, targetIndex];
+      foundRef.current = nextFound;
+      setFoundTargets(nextFound);
       playSound("found");
-      setHistory((previous) => [
-        ...previous,
-        {
-          id: round.id,
-          title: round.title,
-          points: roundPoints(misses, hinted, config),
-          time: now - roundStart,
-          misses,
-          hinted,
-        },
-      ]);
-      setTotalTime(now);
+      setToast("Found him! Keep looking, or head to the next scene.");
     } else {
       setMisses((n) => n + 1);
       setToast(
@@ -508,23 +624,33 @@ export default function App() {
     }
   };
   const next = () => {
+    const now = clock.read();
+    setHistory((previous) => [
+      ...previous,
+      {
+        id: round.id,
+        title: round.title,
+        points: currentRoundPoints,
+        time: now - roundStart,
+        misses,
+        wallyCount: wallyHits.length,
+        foundCount: foundTargets.length,
+      },
+    ]);
+    setTotalTime(now);
+    setToast("");
     if (index === config.rounds.length - 1) {
       setStage("result");
       return;
     }
-    setRoundStart(clock.read());
+    setRoundStart(now);
     setIndex((n) => n + 1);
-    setFound(false);
+    foundRef.current = [];
+    setFoundTargets([]);
     setReady(false);
     setMisses(0);
-    setHinted(false);
-    setToast("");
-  };
-  const hint = () => {
-    if (hinted || !ready || found) return;
-    setHinted(true);
-    playSound("hint");
-    setToast("Look inside the violet circle. He’s in there somewhere!");
+    wallyRef.current = [];
+    setWallyHits([]);
   };
   const saveCard = async () => {
     await document.fonts.ready;
@@ -539,7 +665,11 @@ export default function App() {
     ctx.textAlign = "center";
     ctx.fillStyle = "#6e658f";
     ctx.font = "bold 26px sans-serif";
-    ctx.fillText("THE FAREWELL EDITION", 600, 130);
+    ctx.fillText(
+      perfect ? "PERFECT SEARCH!" : "THE NEXT CHAPTER",
+      600,
+      130,
+    );
     ctx.fillStyle = "#25271f";
     ctx.font = 'bold 90px "Bricolage Grotesque", sans-serif';
     ctx.fillText("Where is Nick?", 600, 265);
@@ -558,7 +688,18 @@ export default function App() {
     }
     ctx.fillText(username, 600, 685);
     ctx.font = "32px sans-serif";
-    ctx.fillText("Officially an excellent Nick finder.", 600, 750);
+    ctx.fillText(
+      perfect
+        ? "Every Nick. No mistakes. A perfect search."
+        : "An official member of Nick’s search party.",
+      600,
+      750,
+    );
+    if (perfect) {
+      ctx.fillStyle = "#97702a";
+      ctx.font = "bold 28px sans-serif";
+      ctx.fillText(`PERFECT! +${perfectBonus} BONUS POINTS`, 600, 820);
+    }
     ctx.fillStyle = "#ed542c";
     ctx.font = "bold 112px sans-serif";
     ctx.fillText(`${score}`, 330, 985);
@@ -576,16 +717,16 @@ export default function App() {
     ctx.fillStyle = "#25271f";
     ctx.font = "bold 36px sans-serif";
     ctx.fillText(
-      `${history.length} / ${config.rounds.length} Nicks found`,
+      `${totalFound} Nicks found · ${history.length} scenes explored`,
       600,
       1225,
     );
     ctx.font = "28px sans-serif";
     ctx.fillText("Here’s to your next adventure, Nick.", 600, 1310);
-    if (config.practiceMode) {
+    if (config.reviewMode) {
       ctx.fillStyle = "#6e658f";
       ctx.font = "22px sans-serif";
-      ctx.fillText("PRACTICE EDITION", 600, 1400);
+      ctx.fillText("LOCATION REVIEW", 600, 1400);
     }
     canvas.toBlob((blob) => {
       if (blob)
@@ -622,7 +763,6 @@ export default function App() {
           where is nick<span className="brand-question">?</span>
         </button>
         <div className="header-right">
-          <span className="header-edition">A LITTLE FAREWELL ADVENTURE</span>
           <button
             className={`icon-button sound-button ${sound ? "sound-on" : ""}`}
             aria-label={sound ? "Mute sound" : "Enable sound"}
@@ -673,7 +813,7 @@ export default function App() {
                 <Icon name="clock" />
                 <span>
                   <small>
-                    {!ready || found || paused || hidden || rules || restart
+                    {!ready || paused || hidden || rules || restart
                       ? "TIME · PAUSED"
                       : "SEARCH TIME"}
                   </small>
@@ -698,14 +838,10 @@ export default function App() {
             {config.rounds.map((r, i) => (
               <div
                 key={r.id}
-                className={`progress-step ${i < index || (i === index && found) ? "complete" : ""} ${i === index ? "current" : ""}`}
+                className={`progress-step ${i < index ? "complete" : ""} ${i === index ? "current" : ""}`}
               >
                 <span>
-                  {i < index || (i === index && found) ? (
-                    <Icon name="check" size={14} />
-                  ) : (
-                    `0${i + 1}`
-                  )}
+                  {i < index ? <Icon name="check" size={14} /> : `0${i + 1}`}
                 </span>
                 <p>{r.title}</p>
               </div>
@@ -716,123 +852,89 @@ export default function App() {
               <Viewer
                 key={round.id}
                 round={round}
-                practice={config.practiceMode}
-                found={found}
-                hinted={hinted}
+                review={config.reviewMode}
+                foundTargets={foundTargets}
+                wallyHits={wallyHits}
                 disabled={paused || rules || restart || hidden}
                 onGuess={guess}
                 onReady={onReady}
               />
-              {config.practiceMode && (
-                <div className="practice-banner">
+              {config.reviewMode && (
+                <div className="review-banner">
                   <Icon name="flag" size={15} />
                   <span>
-                    Practice edition — find the orange <b>N</b> marker.
+                    Location review:{" "}
+                    <b className="legend-nick">magenta: Nick</b> ·{" "}
+                    <b className="legend-wally">cyan: Wally</b>.
                   </span>
                 </div>
               )}
             </div>
-            <aside className={`detective-card ${found ? "found-card" : ""}`}>
-              <span className="eyebrow">
-                {found ? "CASE CLOSED" : "YOUR MISSION"}
-              </span>
+            <aside className="detective-card">
+              <span className="eyebrow">YOUR MISSION</span>
               <div className="nick-token">
-                {found ? (
-                  <Icon name="check" size={45} />
-                ) : (
-                  <>
-                    <span>N</span>
-                    <i>?</i>
-                  </>
-                )}
+                <span>N</span>
+                <i>?</i>
               </div>
-              <h2>{found ? "There he is!" : "Find our guy."}</h2>
+              <h2>{foundTargets.length ? "Nice find!" : "Find our guy."}</h2>
               <p>
-                {found
-                  ? [
-                      "Nick can run, but he can’t hide.",
-                      "Even space couldn’t keep him away.",
-                      "You’ve got an eye for this.",
-                      "Found him just in time for dessert.",
-                      "Five scenes. Five finds. What a send-off.",
-                    ][index]
-                  : "Somewhere in this crowd, Nick is waiting to be found."}
+                {foundTargets.length
+                  ? "Keep looking, or move on when you’re ready. There’s no telling how many Nicks are here."
+                  : "Look closely. Nick may be hiding in more than one place."}
               </p>
-              {found ? (
-                <>
-                  <div className="found-points">
-                    +{history.at(-1)?.points ?? 0}
-                    <span>POINTS IN THE BAG</span>
-                  </div>
-                  <button
-                    autoFocus
-                    className="btn primary next-button"
-                    onClick={next}
-                  >
-                    {index === config.rounds.length - 1
-                      ? "See my results"
-                      : "Next scene"}
-                    <Icon name="arrow" />
-                  </button>
-                  <span className="round-time">
-                    <Icon name="clock" size={14} /> Found in{" "}
-                    {formatTime(history.at(-1)?.time ?? 0)}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <div className="mission-divider" />
-                  <div className="potential-points">
-                    <Icon name="star" size={16} />
-                    <span>
-                      This find is worth{" "}
-                      <b>{roundPoints(misses, hinted, config)} points</b>
-                    </span>
-                  </div>
-                  <button
-                    className="btn hint-button"
-                    disabled={!ready || hinted}
-                    onClick={hint}
-                  >
-                    <Icon name="hint" />
-                    {hinted ? "Hint revealed" : "A little nudge"}
-                    <span>{hinted ? "✓" : `−${config.hintPenalty}`}</span>
-                  </button>
-                  <span className="hint-note">
-                    {hinted
-                      ? "Look inside the violet circle."
-                      : "A hint narrows down the search."}
-                  </span>
-                  <div className="field-note">
-                    <span>NOTE TO SELF</span>
-                    <p>
-                      “He’s definitely here.
-                      <br />
-                      Probably.”
-                    </p>
-                    <span className="field-star">✳</span>
-                  </div>
-                </>
-              )}
+              <div className="mission-divider" />
+              <div className="potential-points">
+                <Icon name="star" size={16} />
+                <span>
+                  Each new Nick earns <b>{config.pointsPerFind} points</b>
+                </span>
+              </div>
+              <button className="btn primary next-button" onClick={next}>
+                {index === config.rounds.length - 1
+                  ? "See my results"
+                  : "Next scene"}
+                <Icon name="arrow" />
+              </button>
+              <span className="support-note">
+                Move on whenever you’re ready.
+              </span>
+              <div className="field-note">
+                <span>NOTE TO SELF</span>
+                <p>
+                  “He’s definitely here.
+                  <br />
+                  Probably.”
+                </p>
+                <span className="field-star">✳</span>
+              </div>
             </aside>
           </div>
-          {found && <Confetti key={round.id} />}
+          {foundTargets.length > 0 && (
+            <Confetti key={`${round.id}-${foundTargets.length}`} />
+          )}
         </main>
       )}
       {stage === "result" && (
         <main className="result-main">
           <Confetti big />
           <div className="result-intro">
-            <span className="eyebrow">THE SEARCH IS OVER</span>
+            <span className="eyebrow">
+              {perfect ? "A PERFECT START" : "THE SEARCH IS OVER"}
+            </span>
             <h1>
-              You found Nick.
+              {perfect ? "Perfect search!" : "Your search is over."}
               <br />
-              <span>Now send him off.</span>
+              <span>Nick’s adventure begins.</span>
             </h1>
-            <p>One last little adventure, before his next big one.</p>
+            <p>New places. New possibilities. Same Nick.</p>
           </div>
-          <div className="result-card" data-testid="result-card">
-            <span className="result-ribbon">OFFICIAL NICK FINDER</span>
+          <div
+            className={`result-card ${perfect ? "perfect-card" : ""}`}
+            data-testid="result-card"
+          >
+            <span className="result-ribbon">
+              {perfect ? "PERFECT NICK FINDER" : "OFFICIAL SEARCH PARTY"}
+            </span>
             <div className="result-medal">
               <Icon name="star" size={44} />
               <span>✦</span>
@@ -841,12 +943,22 @@ export default function App() {
             <span className="eyebrow">CERTIFIED DETECTIVE</span>
             <h2>{username}</h2>
             <p>
-              {score >= 450
-                ? "Sharp eyes. Legendary send-off."
-                : score >= 300
-                  ? "A little persistence goes a long way."
-                  : "You made it. That’s what friends do."}
+              {perfect
+                ? "Every Nick found. Not a single mistake."
+                : scoreRatio >= 0.9
+                  ? "Sharp eyes. A brilliant beginning."
+                  : scoreRatio >= 0.6
+                    ? "A little persistence goes a long way."
+                    : "You made it. That’s what friends do."}
             </p>
+            {perfect && (
+              <div className="perfect-banner" data-testid="perfect-bonus">
+                <Icon name="star" size={18} />
+                <span>
+                  <strong>PERFECT!</strong> +{perfectBonus} bonus points
+                </span>
+              </div>
+            )}
             <div className="result-stats">
               <div>
                 <strong data-testid="final-score">{score}</strong>
@@ -861,14 +973,21 @@ export default function App() {
             </div>
             <div className="result-finds">
               <Icon name="check" size={17} />
-              {history.length} of {config.rounds.length} Nicks found{" "}
-              <span>•</span> {history.reduce((n, r) => n + r.misses, 0)} wrong{" "}
+              {totalFound} Nicks found <span>•</span> {history.length} scenes
+              explored <span>•</span>{" "}
+              {history.reduce((n, r) => n + r.misses, 0)} wrong{" "}
               {history.reduce((n, r) => n + r.misses, 0) === 1
                 ? "guess"
                 : "guesses"}
             </div>
-            {config.practiceMode && (
-              <span className="result-practice">PRACTICE EDITION</span>
+            {totalWally > 0 && (
+              <p className="result-wally" data-testid="wally-total">
+                {totalWally} Wally spotted · −{totalWally * config.wallyPenalty}{" "}
+                points
+              </p>
+            )}
+            {config.reviewMode && (
+              <span className="result-review">LOCATION REVIEW</span>
             )}
             <div className="result-signoff">
               Here’s to your next adventure, Nick. <span>↗</span>
@@ -909,7 +1028,7 @@ export default function App() {
       <footer className="site-footer">
         <span>
           Made for Nick. <span className="footer-heart">♥</span> And everyone
-          who’ll miss him.
+          cheering him on.
         </span>
         <button className="text-button" onClick={() => setRules(true)}>
           How to play <Icon name="arrow" size={14} />

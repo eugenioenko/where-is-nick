@@ -12,16 +12,38 @@ async function ready(page) {
     page.getByRole("button", { name: "Zoom in", exact: true }),
   ).toBeEnabled();
 }
+async function findOne(page) {
+  await ready(page);
+  const targets = await sceneTargets(page);
+  const found = await page.locator(".target-found").count();
+  const point = await imagePoint(page, targets[found]);
+  await page.mouse.click(point.x, point.y);
+  await expect(page.locator(".target-found")).toHaveCount(found + 1);
+}
 async function find(page) {
   await ready(page);
-  const target = await page.getByTestId("target-marker").boundingBox();
-  await page.mouse.click(
-    target.x + target.width / 2,
-    target.y + target.height / 2,
-  );
-  await expect(
-    page.getByRole("heading", { name: "There he is!" }),
-  ).toBeVisible();
+  const targets = await sceneTargets(page);
+  while ((await page.locator(".target-found").count()) < targets.length)
+    await findOne(page);
+  await expect(page.getByRole("heading", { name: "Nice find!" })).toBeVisible();
+}
+async function sceneTargets(page) {
+  const height = await page
+    .getByTestId("scene-image")
+    .evaluate((img) => img.naturalHeight);
+  return expectedPixels[[1604, 1685, 1623, 1609, 1595].indexOf(height)];
+}
+async function imagePoint(page, [x, y, width, height]) {
+  const image = page.getByTestId("scene-image");
+  const box = await image.boundingBox();
+  const size = await image.evaluate((img) => ({
+    width: img.naturalWidth,
+    height: img.naturalHeight,
+  }));
+  return {
+    x: box.x + ((x + width / 2) / size.width) * box.width,
+    y: box.y + ((y + height / 2) / size.height) * box.height,
+  };
 }
 
 test("intro, username validation, and responsive layout", async ({ page }) => {
@@ -57,14 +79,12 @@ test("all five rounds, penalties, result card download, and replay", async ({
     scene.x + scene.width * 0.12,
     scene.y + scene.height * 0.7,
   );
-  await expect(page.getByText("90 points")).toBeVisible();
-  await page.getByRole("button", { name: "A little nudge" }).click();
-  await expect(page.getByTestId("hint-area")).toBeVisible();
-  await expect(page.getByText("70 points")).toBeVisible();
+  await expect(page.getByTestId("score")).toHaveText("000");
+  await expect(page.getByTestId("score")).toHaveText("000");
   for (let i = 0; i < 5; i++) {
     await find(page);
     await expect(page.getByTestId("score")).toHaveText(
-      String(70 + 100 * i).padStart(3, "0"),
+      String([290, 490, 590, 990, 1090][i]).padStart(3, "0"),
     );
     if (i < 4) {
       await page.getByRole("button", { name: "Next scene" }).click();
@@ -72,10 +92,9 @@ test("all five rounds, penalties, result card download, and replay", async ({
     } else await page.getByRole("button", { name: "See my results" }).click();
   }
   await expect(page.getByTestId("result-card")).toContainText("Detective Sam");
-  await expect(page.getByTestId("final-score")).toHaveText("470");
-  await expect(page.getByTestId("result-card")).toContainText(
-    "5 of 5 Nicks found",
-  );
+  await expect(page.getByTestId("final-score")).toHaveText("1090");
+  await expect(page.getByTestId("perfect-bonus")).toHaveCount(0);
+  await expect(page.getByTestId("result-card")).toContainText("11 Nicks found");
   await expect(page.getByTestId("result-card")).toContainText("1 wrong guess");
   const downloadEvent = page.waitForEvent("download");
   await page.getByRole("button", { name: "Save my card" }).click();
@@ -93,7 +112,7 @@ test("all five rounds, penalties, result card download, and replay", async ({
   expect(errors).toEqual([]);
 });
 
-test("timer pauses for loading, breaks, and post-find celebration", async ({
+test("timer pauses for loading and breaks but keeps running after finds", async ({
   page,
 }) => {
   let allowImages;
@@ -125,7 +144,12 @@ test("timer pauses for loading, breaks, and post-find celebration", async ({
   await find(page);
   const frozen = await page.getByTestId("timer").textContent();
   await page.waitForTimeout(1200);
-  await expect(page.getByTestId("timer")).toHaveText(frozen);
+  await expect(page.getByTestId("timer")).not.toHaveText(frozen);
+  await page.getByRole("button", { name: "Next scene" }).click();
+  await expect(page.getByText("SETTING THE SCENE")).toBeVisible();
+  const loading = await page.getByTestId("timer").textContent();
+  await page.waitForTimeout(200);
+  await expect(page.getByTestId("timer")).toHaveText(loading);
 });
 
 test("image load failure is recoverable and does not run the clock", async ({
@@ -139,7 +163,7 @@ test("image load failure is recoverable and does not run the clock", async ({
   await page.getByRole("button", { name: "Try again" }).click();
   await ready(page);
   await find(page);
-  await expect(page.getByTestId("score")).toHaveText("100");
+  await expect(page.getByTestId("score")).toHaveText("300");
 });
 
 test("zoom, drag without guessing, accurate hit area, and keyboard controls", async ({
@@ -169,7 +193,7 @@ test("zoom, drag without guessing, accurate hit area, and keyboard controls", as
   await expect(page.getByLabel("Zoom level")).toHaveText("100%");
   await page.getByRole("button", { name: "Zoom in", exact: true }).click();
   await find(page);
-  await expect(page.getByTestId("score")).toHaveText("100");
+  await expect(page.getByTestId("score")).toHaveText("300");
 });
 
 test("target setup draws and exports usable percentage coordinates", async ({
@@ -194,8 +218,15 @@ test("target setup draws and exports usable percentage coordinates", async ({
   const chunks = [];
   for await (const chunk of stream) chunks.push(chunk);
   const data = JSON.parse(Buffer.concat(chunks).toString());
-  expect(data.practiceMode).toBe(false);
-  expect(data.targets.giants).toEqual({ x: 50, y: 50, width: 10, height: 15 });
+  expect(data.reviewMode).toBe(false);
+  expect(data.wally.giants).toHaveLength(1);
+  expect(data.targets.giants[0]).toEqual({
+    x: 50,
+    y: 50,
+    width: 10,
+    height: 15,
+  });
+  expect(data.targets.giants).toHaveLength(3);
   expect(Object.keys(data.targets)).toHaveLength(5);
   await page.getByRole("button", { name: "Back to game" }).click();
   await expect(
@@ -237,18 +268,13 @@ test("touchscreen pinch zooms, dragging does not guess, and tapping finds Nick",
   await expect(page.getByLabel("Zoom level")).not.toHaveText("100%");
   await expect(page.getByText("100 points")).toBeVisible();
   await page.getByRole("button", { name: "Reset view" }).tap();
-  const target = await page.getByTestId("target-marker").boundingBox();
-  await page.touchscreen.tap(
-    target.x + target.width / 2,
-    target.y + target.height / 2,
-  );
-  await expect(
-    page.getByRole("heading", { name: "There he is!" }),
-  ).toBeVisible();
+  const target = await imagePoint(page, expectedPixels[0][0]);
+  await page.touchscreen.tap(target.x, target.y);
+  await expect(page.getByRole("heading", { name: "Nice find!" })).toBeVisible();
   await expect(page.getByTestId("score")).toHaveText("100");
 });
 
-test("a scene score never drops below zero", async ({ page }) => {
+test("total score never displays below zero", async ({ page }) => {
   await start(page);
   await ready(page);
   const scene = await page.getByTestId("scene-image").boundingBox();
@@ -257,11 +283,252 @@ test("a scene score never drops below zero", async ({ page }) => {
       scene.x + scene.width * 0.1,
       scene.y + scene.height * 0.7,
     );
-  await page.getByRole("button", { name: "A little nudge" }).click();
-  await expect(page.getByText("0 points", { exact: true })).toBeVisible();
-  await find(page);
   await expect(page.getByTestId("score")).toHaveText("000");
+  await find(page);
+  await expect(page.getByTestId("score")).toHaveText("180");
   await page.getByRole("button", { name: "Next scene" }).click();
+  await find(page);
+  await expect(page.getByTestId("score")).toHaveText("380");
+});
+
+test("multiple Nicks stay marked, repeated clicks do not score, and totals stay hidden", async ({
+  page,
+}) => {
+  await start(page);
   await ready(page);
-  await expect(page.getByText("100 points", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next scene" })).toBeEnabled();
+  const first = await imagePoint(page, expectedPixels[0][0]);
+  await findOne(page);
+  await expect(page.getByTestId("score")).toHaveText("100");
+  await expect(page.getByRole("heading", { name: "Nice find!" })).toBeVisible();
+  await expect(page.locator(".target-found")).toHaveCount(1);
+  const toast = await page.locator(".toast").boundingBox();
+  expect(toast.y).toBeGreaterThanOrEqual(0);
+  expect(toast.y + toast.height).toBeLessThan(150);
+  await page.mouse.click(first.x, first.y);
+  await expect(page.getByTestId("score")).toHaveText("100");
+  await expect(page.locator(".detective-card")).not.toContainText(
+    /remaining|of 2|2 Nicks|2 targets/,
+  );
+  await find(page);
+  await expect(page.getByTestId("score")).toHaveText("300");
+  await expect(page.locator(".target-found")).toHaveCount(3);
+  await expect(
+    page.getByRole("heading", { name: "Scene cleared!" }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Next scene" })).toBeEnabled();
+});
+
+test("host can add and remove multiple targets and export the full list", async ({
+  page,
+}) => {
+  await page.goto("/?setup=1");
+  await ready(page);
+  await page.getByRole("button", { name: "Add Nick" }).click();
+  const image = await page.getByTestId("scene-image").boundingBox();
+  await page.mouse.move(
+    image.x + image.width * 0.3,
+    image.y + image.height * 0.2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    image.x + image.width * 0.35,
+    image.y + image.height * 0.28,
+    { steps: 6 },
+  );
+  await page.mouse.up();
+  await expect(
+    page.getByRole("button", { name: "Nick 4", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".setup-result>code")).toHaveText(
+    '{"x":30,"y":20,"width":5,"height":8}',
+  );
+  await page.getByRole("button", { name: "Nick 2", exact: true }).click();
+  await page.getByRole("button", { name: "Remove selected" }).click();
+  await expect(
+    page.getByRole("button", { name: "Nick 4", exact: true }),
+  ).toHaveCount(0);
+  const event = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download targets" }).click();
+  const stream = await (await event).createReadStream(),
+    chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  const data = JSON.parse(Buffer.concat(chunks).toString());
+  expect(data.targets.giants).toHaveLength(3);
+  expect(data.targets.giants[2]).toEqual({ x: 30, y: 20, width: 5, height: 8 });
+  while (
+    await page.getByRole("button", { name: "Remove selected" }).isEnabled()
+  )
+    await page.getByRole("button", { name: "Remove selected" }).click();
+  await expect(
+    page.getByRole("button", { name: "Remove selected" }),
+  ).toBeDisabled();
+});
+
+test("every scene can be skipped with zero finds, including during loading", async ({
+  page,
+}) => {
+  await start(page);
+  for (let i = 0; i < 4; i++)
+    await page.getByRole("button", { name: "Next scene" }).click();
+  await page.getByRole("button", { name: "See my results" }).click();
+  await expect(page.getByTestId("result-card")).toContainText("0 Nicks found");
+  await expect(page.getByTestId("result-card")).toContainText(
+    "5 scenes explored",
+  );
+  await expect(page.getByTestId("final-score")).toHaveText("0");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(
+    "Your search is over.",
+  );
+});
+
+const expectedPixels = [
+  [
+    [733, 215, 85, 93],
+    [628, 1252, 45, 41],
+    [1426, 1140, 32, 43],
+  ],
+  [
+    [1007, 1035, 52, 44],
+    [1884, 1150, 60, 65],
+  ],
+  [[2163, 1148, 58, 72]],
+  [
+    [730, 201, 55, 59],
+    [1431, 521, 65, 91],
+    [835, 1189, 108, 141],
+    [1644, 1252, 54, 97],
+  ],
+  [[420, 1116, 45, 49]],
+];
+
+test("review markers stay hidden and finds match all eleven confirmed locations", async ({
+  page,
+}) => {
+  await start(page);
+  const sizes = [
+    [2560, 1604],
+    [2560, 1685],
+    [2560, 1623],
+    [2560, 1609],
+    [2560, 1595],
+  ];
+  for (let i = 0; i < 5; i++) {
+    await ready(page);
+    const info = await page
+      .getByTestId("scene-image")
+      .evaluate((img) => ({ w: img.naturalWidth, h: img.naturalHeight }));
+    expect([info.w, info.h]).toEqual(sizes[i]);
+    await expect(page.getByTestId("target-marker")).toHaveCount(0);
+    await expect(page.getByTestId("wally-marker")).toHaveCount(0);
+    await expect(
+      page.locator(".review-banner, .review-note, .header-edition"),
+    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /nudge|hint/i })).toHaveCount(
+      0,
+    );
+    const image = await page.getByTestId("scene-image").boundingBox();
+    for (let j = 0; j < expectedPixels[i].length; j++) {
+      await findOne(page);
+      await page
+        .getByTestId("target-marker")
+        .nth(j)
+        .evaluate((el) =>
+          Promise.all(
+            el.getAnimations().map((animation) => animation.finished),
+          ),
+        );
+      const box = await page.getByTestId("target-marker").nth(j).boundingBox();
+      const actual = [
+        ((box.x - image.x) / image.width) * info.w,
+        ((box.y - image.y) / image.height) * info.h,
+        (box.width / image.width) * info.w,
+        (box.height / image.height) * info.h,
+      ];
+      actual.forEach((value, k) =>
+        expect(value).toBeCloseTo(expectedPixels[i][j][k], 0),
+      );
+      expect(
+        await page
+          .getByTestId("target-marker")
+          .nth(j)
+          .evaluate((el) => getComputedStyle(el).borderTopColor),
+      ).not.toBe("rgb(255, 0, 255)");
+    }
+    if (i < 4) await page.getByRole("button", { name: "Next scene" }).click();
+  }
+});
+
+test("Wally deducts exactly 100, is marked once, and prevents a perfect bonus", async ({
+  page,
+}) => {
+  await start(page);
+  await find(page);
+  await expect(page.getByTestId("score")).toHaveText("300");
+  const wally = await imagePoint(page, [433, 1025, 52, 53]);
+  await page.mouse.click(wally.x, wally.y);
+  await expect(page.getByTestId("score")).toHaveText("200");
+  await expect(page.getByText("That’s Wally! −100 points.")).toBeVisible();
+  await expect(page.getByTestId("wally-marker")).toHaveCount(1);
+  await page.mouse.click(wally.x, wally.y);
+  await expect(page.getByTestId("score")).toHaveText("200");
+  for (let i = 1; i < 5; i++) {
+    await page.getByRole("button", { name: "Next scene" }).click();
+    await find(page);
+  }
+  await page.getByRole("button", { name: "See my results" }).click();
+  await expect(page.getByTestId("final-score")).toHaveText("1000");
+  await expect(page.getByTestId("perfect-bonus")).toHaveCount(0);
+  await expect(page.getByTestId("wally-total")).toHaveText(
+    "1 Wally spotted · −100 points",
+  );
+  await expect(page.getByTestId("result-card")).toContainText(
+    "0 wrong guesses",
+  );
+});
+
+test("a flawless full search earns 500 bonus points and a Perfect result", async ({
+  page,
+}) => {
+  await start(page, "Perfect Detective");
+  for (let i = 0; i < 5; i++) {
+    await find(page);
+    if (i < 4) await page.getByRole("button", { name: "Next scene" }).click();
+  }
+  await expect(page.getByTestId("score")).toHaveText("1100");
+  await page.getByRole("button", { name: "See my results" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(
+    "Perfect search!",
+  );
+  await expect(page.getByTestId("perfect-bonus")).toHaveText(
+    "PERFECT! +500 bonus points",
+  );
+  await expect(page.getByTestId("final-score")).toHaveText("1600");
+  await expect(page.getByTestId("result-card")).toContainText("11 Nicks found");
+  const event = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save my card" }).click();
+  expect(await (await event).failure()).toBeNull();
+  await page.getByRole("button", { name: "One more search" }).click();
+  await page.getByRole("button", { name: "Start the search" }).click();
+  await ready(page);
+  await expect(page.getByTestId("score")).toHaveText("000");
+});
+
+test("missing a Nick disqualifies the perfect bonus even without mistakes", async ({
+  page,
+}) => {
+  await start(page);
+  await findOne(page);
+  await findOne(page);
+  for (let i = 1; i < 5; i++) {
+    await page.getByRole("button", { name: "Next scene" }).click();
+    await find(page);
+  }
+  await page.getByRole("button", { name: "See my results" }).click();
+  await expect(page.getByTestId("final-score")).toHaveText("1000");
+  await expect(page.getByTestId("perfect-bonus")).toHaveCount(0);
+  await expect(page.getByTestId("result-card")).toContainText("10 Nicks found");
+  await expect(page.getByTestId("result-card")).toContainText(
+    "0 wrong guesses",
+  );
 });

@@ -10,15 +10,16 @@ import { clamp } from "./utils.js";
 
 export default function Viewer({
   round,
-  practice,
-  found = false,
-  hinted = false,
+  review,
+  foundTargets = [],
+  wallyHits = [],
   disabled = false,
   onGuess,
   onReady,
   editing = false,
   drawMode = false,
   onTarget,
+  selectedTarget = null,
 }) {
   const viewport = useRef(null);
   const imageRef = useRef(null);
@@ -147,26 +148,50 @@ export default function Viewer({
     };
   };
   const guess = (x, y) => {
-    if (!ready || disabled || found || editing) return;
+    if (!ready || disabled || editing) return;
     const point = imagePoint(x, y);
     if (!point || point.x < 0 || point.x > 100 || point.y < 0 || point.y > 100)
       return;
-    const target = round.target;
-    const marker = practice
-      ? viewport.current.querySelector(".target>span")?.getBoundingClientRect()
-      : null;
-    const tappedMarker =
-      marker &&
-      x >= marker.left &&
-      x <= marker.right &&
-      y >= marker.top &&
-      y <= marker.bottom;
-    const correct =
-      !!tappedMarker ||
-      (point.x >= target.x &&
-        point.x <= target.x + target.width &&
-        point.y >= target.y &&
-        point.y <= target.y + target.height);
+    const contains = (target) =>
+      point.x >= target.x &&
+      point.x <= target.x + target.width &&
+      point.y >= target.y &&
+      point.y <= target.y + target.height;
+    const wallyIndex = (round.wallyTargets ?? []).findIndex(contains);
+    if (wallyIndex >= 0) {
+      const box = viewport.current.getBoundingClientRect();
+      setFeedback({
+        x: x - box.left,
+        y: y - box.top,
+        correct: false,
+        key: performance.now(),
+      });
+      onGuess?.(wallyIndex, "wally");
+      return;
+    }
+    const matches = round.targets.flatMap((target, index) => {
+      const marker = review
+        ? viewport.current
+            .querySelector(`[data-target-index="${index}"]>span`)
+            ?.getBoundingClientRect()
+        : null;
+      const tappedMarker =
+        marker &&
+        x >= marker.left &&
+        x <= marker.right &&
+        y >= marker.top &&
+        y <= marker.bottom;
+      return tappedMarker || contains(target) ? [index] : [];
+    });
+    const targetIndex =
+      matches.find((index) => !foundTargets.includes(index)) ??
+      matches[0] ??
+      -1;
+    const correct = targetIndex >= 0;
+    if (foundTargets.includes(targetIndex)) {
+      onGuess?.(targetIndex);
+      return;
+    }
     const box = viewport.current.getBoundingClientRect();
     setFeedback({
       x: x - box.left,
@@ -174,7 +199,7 @@ export default function Viewer({
       correct,
       key: performance.now(),
     });
-    onGuess?.(correct);
+    onGuess?.(targetIndex);
   };
   const setGesture = () => {
     const values = [...pointers.current.values()];
@@ -353,34 +378,47 @@ export default function Viewer({
               draggable="false"
               data-testid="scene-image"
             />
-            {(practice || found || editing) && (
-              <div
-                className={`target ${found ? "target-found" : ""} ${editing ? "target-editor" : ""}`}
-                style={targetStyle(round.target)}
-                data-testid="target-marker"
-              >
-                <span>
-                  {found ? (
-                    <Icon name="check" size={16} />
-                  ) : editing ? (
-                    "TARGET"
-                  ) : (
-                    "N"
-                  )}
-                </span>
-              </div>
+            {round.targets.map(
+              (target, index) =>
+                (review || foundTargets.includes(index) || editing) && (
+                  <div
+                    key={index}
+                    className={`target ${review ? "target-review" : ""} ${foundTargets.includes(index) ? "target-found" : ""} ${editing ? "target-editor" : ""} ${editing && selectedTarget === index ? "target-selected" : ""}`}
+                    style={targetStyle(target)}
+                    data-testid="target-marker"
+                    data-target-index={index}
+                  >
+                    <span>
+                      {foundTargets.includes(index) ? (
+                        <Icon name="check" size={16} />
+                      ) : editing ? (
+                        "TARGET"
+                      ) : (
+                        "N"
+                      )}
+                    </span>
+                  </div>
+                ),
             )}
-            {hinted && !found && (
-              <div
-                className="hint-area"
-                data-testid="hint-area"
-                style={{
-                  left: `${clamp(round.target.x - 9, 0, 76)}%`,
-                  top: `${clamp(round.target.y - 10, 0, 76)}%`,
-                  width: "24%",
-                  height: "24%",
-                }}
-              />
+            {(round.wallyTargets ?? []).map(
+              (target, index) =>
+                (review || editing || wallyHits.includes(index)) && (
+                  <div
+                    key={`wally-${index}`}
+                    className={`target target-wally ${wallyHits.includes(index) ? "target-wally-hit" : ""}`}
+                    style={targetStyle(target)}
+                    data-testid="wally-marker"
+                    data-wally-index={index}
+                  >
+                    <span>
+                      {wallyHits.includes(index) ? (
+                        <Icon name="close" size={14} />
+                      ) : (
+                        "W"
+                      )}
+                    </span>
+                  </div>
+                ),
             )}
             {draft && (
               <div

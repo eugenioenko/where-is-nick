@@ -28,11 +28,6 @@ const paths = {
   ),
   check: <path d="m5 12 4 4 10-10" />,
   close: <path d="m6 6 12 12M6 18 18 6" />,
-  hint: (
-    <>
-      <path d="M9 18h6m-5 3h4M8 14a6 6 0 1 1 8 0l-1 2H9z" />
-    </>
-  ),
   volume: (
     <>
       <path d="m11 4-6 5H2v6h3l6 5zM15 8a5 5 0 0 1 0 8m3-11a9 9 0 0 1 0 14" />

@@ -5,12 +5,11 @@ export function formatTime(ms) {
     .toString()
     .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
 }
-export function roundPoints(misses, hinted, config) {
-  return Math.max(
-    0,
-    config.pointsPerFind -
-      misses * config.wrongGuessPenalty -
-      (hinted ? config.hintPenalty : 0),
+export function roundPoints(foundCount, misses, wallyCount, config) {
+  return (
+    foundCount * config.pointsPerFind -
+    misses * config.wrongGuessPenalty -
+    wallyCount * config.wallyPenalty
   );
 }
 export function safeRead(key, fallback) {
