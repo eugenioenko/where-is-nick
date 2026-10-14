@@ -1,0 +1,10 @@
+{
+  "practiceMode": true,
+  "targets": {
+    "giants": { "x": 68, "y": 55, "width": 4, "height": 7 },
+    "space": { "x": 43, "y": 40, "width": 4, "height": 9 },
+    "crowd": { "x": 76, "y": 68, "width": 4, "height": 7 },
+    "feast": { "x": 57, "y": 30, "width": 4, "height": 7 },
+    "last": { "x": 35, "y": 57, "width": 4, "height": 7 }
+  }
+}
