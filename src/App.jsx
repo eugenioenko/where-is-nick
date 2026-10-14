@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { gameConfig as config } from "./game-config.js";
 import Viewer from "./Viewer.jsx";
 import Icon from "./Icon.jsx";
+import nickFace from "../images/new/nick.png";
 import {
   downloadFile,
   formatTime,
@@ -202,16 +203,18 @@ function Home({ onStart, onRules }) {
             <br />
             Join Nick on his next adventure.
           </p>
-          <button className="btn primary start-button" onClick={onStart}>
-            Let’s find Nick <Icon name="arrow" size={24} />
-          </button>
-          <div className="hero-details">
-            <span>
-              <Icon name="search" size={16} /> {config.rounds.length} scenes
-            </span>
-            <span>
-              <Icon name="clock" size={16} /> One little adventure
-            </span>
+          <div className="hero-start">
+            <div className="meet-nick-portrait">
+              <img
+                src={nickFace}
+                alt="Nick’s face, with glasses, dark hair, and a moustache"
+                width="64"
+                height="74"
+              />
+            </div>
+            <button className="btn primary start-button" onClick={onStart}>
+              Let’s find Nick <Icon name="arrow" size={24} />
+            </button>
           </div>
           <button className="text-button how-link" onClick={onRules}>
             How to play <span>↗</span>

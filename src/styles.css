@@ -280,23 +280,35 @@ h2 {
   color: #76796c;
   margin-top: 32px;
 }
-.start-button {
+.hero-start {
+  display: grid;
+  grid-template-columns: 82px max-content;
+  align-items: center;
+  gap: 8px 15px;
   margin-top: 27px;
+}
+.meet-nick-portrait {
+  display: grid;
+  place-items: center;
+  height: 82px;
+  border: 1px dashed #b6a7d1;
+  border-radius: 50%;
+  background: #eee7fc;
+  transform: rotate(-6deg);
+}
+.meet-nick-portrait img {
+  width: 64px;
+  height: 74px;
+  object-fit: contain;
+  transform: rotate(6deg);
+  filter: drop-shadow(0 3px 2px #292b2318);
+}
+.start-button {
+  grid-column: 2;
+  grid-row: 1;
   font-size: 15px;
   min-height: 58px;
   gap: 44px;
-}
-.hero-details {
-  display: flex;
-  gap: 19px;
-  margin-top: 17px;
-  font-size: 10px;
-  color: var(--muted);
-}
-.hero-details > span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 .how-link {
   margin-top: 28px;
@@ -1740,9 +1752,6 @@ code {
   .scene-preview h3 {
     font-size: 16px;
   }
-  .hero-details {
-    font-size: 12px;
-  }
   .hero-lens {
     width: 175px;
     height: 175px;
@@ -1817,10 +1826,6 @@ code {
   .hero-description {
     font-size: 13px;
   }
-  .hero-details {
-    gap: 12px;
-    font-size: 9px;
-  }
   .scene-previews {
     gap: 12px;
   }
@@ -1894,12 +1899,20 @@ code {
     margin-top: 24px;
     font-size: 14px;
   }
-  .start-button {
+  .hero-start {
     margin-top: 23px;
+    grid-template-columns: 70px max-content;
   }
-  .hero-details {
-    font-size: 10px;
+  .meet-nick-portrait {
+    height: 70px;
+  }
+  .meet-nick-portrait img {
+    width: 54px;
+    height: 64px;
+  }
+  .start-button {
     gap: 20px;
+    padding-inline: 18px;
   }
   .how-link {
     margin-top: 20px;
